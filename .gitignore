@@ -1,6 +1,9 @@
 # User added
 .idea/
 
+
+.micromamba/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -37,6 +37,7 @@ import hashlib
 import os
 import pickle
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional
 from urllib.parse import urlencode
@@ -58,16 +59,18 @@ class DataCollector:
     """
     __API_BASE_URL = "https://api.hh.ru/vacancies/"
     __DICT_KEYS = (
-        "Ids",
+        # "Ids",
+        "URL",
         "Employer",
         "Name",
         "Salary",
         "From",
         "To",
-        "Experience",
-        "Schedule",
-        "Keys",
+        # "Experience",
+        # "Schedule",
+        # "Keys",
         "Description",
+        "City"
     )
 
     def __init__(self, exchange_rates: Optional[Dict]):
@@ -93,12 +96,35 @@ class DataCollector:
 
     @staticmethod
     def __convert_gross(is_gross: bool) -> float:
-        return 0.87 if is_gross else 1
+        return 1 if is_gross else 1.1494
 
     def get_vacancy(self, vacancy_id: str):
         # Get data from URL
         url = f"{self.__API_BASE_URL}{vacancy_id}"
         vacancy = requests.get(url).json()
+
+        max_attempts = 10
+        attempt = 0
+        while attempt < max_attempts:
+            try:
+                vacancy = requests.get(url).json()
+                if vacancy and not vacancy.get('errors') and not vacancy.get('captcha'):
+                    break
+                # print("retrying...")
+            except:
+                pass
+
+            attempt += 1
+            time.sleep(0.2 * attempt)  # Увеличиваем задержку с каждой попыткой
+
+        if attempt == max_attempts:
+            return None  # Возвращаем None если все попытки неудачны
+
+        # Проверяем наличие обязательного слова в названии вакансии
+        vacancy_name = vacancy.get("name", "").lower()
+        if hasattr(self, 'contains') and self.contains:
+            if self.contains.lower() not in vacancy_name:
+                return None
 
         # Extract salary
         salary = vacancy.get("salary")
@@ -111,21 +137,25 @@ class DataCollector:
             is_gross = vacancy["salary"].get("gross")
             for k, v in from_to.items():
                 if vacancy["salary"][k] is not None:
-                    _value = self.__convert_gross(is_gross)
-                    from_to[k] = int(_value * salary[k] / self._rates[salary["currency"]])
+                    _value = 1.5 * self.__convert_gross(is_gross)  # Всегда считаем с НДФЛ * 1.5 страховых взносов и всех расходов на работника
+                    _year_coeff = 12  # Считаем годовую зарлату - то есть это стоимость работника для работодателя в год
+                    from_to[k] = int(_year_coeff * _value * salary[k] / self._rates[salary["currency"]])
 
+        vacancy_url = "https://hh.ru/vacancy/" + str(vacancy_id)
         # Create pages tuple
         return (
-            vacancy_id,
+            # vacancy_id,
+            vacancy_url,
             vacancy.get("name", ""),
             vacancy.get("employer", {}).get("name", ""),
             salary is not None,
             from_to["from"],
             from_to["to"],
-            vacancy.get("experience", {}).get("name", ""),
-            vacancy.get("schedule", {}).get("name", ""),
-            [el["name"] for el in vacancy.get("key_skills", [])],
+            # vacancy.get("experience", {}).get("name", ""),
+            # vacancy.get("schedule", {}).get("name", ""),
+            # [el["name"] for el in vacancy.get("key_skills", [])],
             self.clean_tags(vacancy.get("description", "")),
+            vacancy.get("area", {}).get("name",  ""),
         )
 
     @staticmethod
@@ -157,6 +187,10 @@ class DataCollector:
             Dict of useful arguments from vacancies
 
         """
+        # В начало функции добавляем:
+        self.contains = query.pop('contains', None)  # Извлекаем параметр contains
+        max_vacancies = query.pop('max_vacancies', None)  # Извлекаем max_pages
+
         if num_workers is None or num_workers < 1:
             num_workers = 1
 
@@ -186,6 +220,12 @@ class DataCollector:
                 break
             ids.extend(x["id"] for x in data["items"])
 
+            # Проверяем ограничение по количеству вакансий
+            if max_vacancies and len(ids) >= max_vacancies:
+                ids = ids[:max_vacancies]  # Обрезаем список до нужного размера
+                print(f"[INFO]: Достигнут лимит в {max_vacancies} вакансий")
+                break
+
         # Collect vacancies...
         jobs_list = []
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
@@ -195,7 +235,8 @@ class DataCollector:
                 ncols=100,
                 total=len(ids),
             ):
-                jobs_list.append(vacancy)
+                if vacancy:
+                    jobs_list.append(vacancy)
 
         unzipped_list = list(zip(*jobs_list))
 
