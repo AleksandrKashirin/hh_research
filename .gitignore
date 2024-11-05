@@ -110,6 +110,6 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-*.csv
+# *.csv
 src/cache/**/*
 !src/cache/.gitkeep
