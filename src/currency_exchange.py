@@ -61,12 +61,12 @@ class Exchanger:
     def save_rates(self, rates: Dict):
         """Save rates to JSON config."""
 
-        with open(self.config_path, "r") as cfg:
+        with open(self.config_path, "r", encoding="utf-8") as cfg:
             data = json.load(cfg)
 
         data["rates"] = rates
 
-        with open(self.config_path, "w") as cfg:
+        with open(self.config_path, "w", encoding="utf-8") as cfg:
             json.dump(data, cfg, indent=2)
 
 

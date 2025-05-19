@@ -1,15 +1,14 @@
 {
   "options": {
-    "text": "грузчик",
+    "text": "Кавист",
     "area": 113,
     "per_page": 100,
     "professional_roles": [],
-    "employer_id": 1942336,
-    "contains": "грузчик",
+    "contains": "",
     "max_vacancies": 0
   },
   "refresh": true,
-  "num_workers": 20,
+  "num_workers": 100,
   "save_result": true,
   "rates": {
     "USD": 0.012641,

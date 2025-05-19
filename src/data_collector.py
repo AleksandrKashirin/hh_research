@@ -160,14 +160,22 @@ class DataCollector:
 
     @staticmethod
     def __encode_query_for_url(query: Optional[Dict]) -> str:
-        if 'professional_roles' in query:
-            query_copy = query.copy()
-
-            roles = '&'.join([f'professional_role={r}' for r in query_copy.pop('professional_roles')])
-
-            return roles + (f'&{urlencode(query_copy)}' if len(query_copy) > 0 else '')
-
-        return urlencode(query)
+        # Создаем копию запроса, чтобы не изменять оригинал
+        query_copy = query.copy() if query else {}
+        
+        # Обрабатываем параметр professional_roles отдельно
+        if 'professional_roles' in query_copy:
+            roles = query_copy.pop('professional_roles')
+            roles_params = '&'.join([f'professional_role={r}' for r in roles])
+            
+            # Обрабатываем остальные параметры
+            other_params = urlencode(query_copy, encoding='utf-8')
+            
+            # Объединяем параметры
+            return roles_params + ('&' + other_params if other_params else '')
+        
+        # Если нет professional_roles, просто кодируем весь запрос
+        return urlencode(query_copy, encoding='utf-8')
 
     def collect_vacancies(self, query: Optional[Dict], refresh: bool = False, num_workers: int = 1) -> Dict:
         """Parse vacancy JSON: get vacancy name, salary, experience etc.
@@ -237,6 +245,10 @@ class DataCollector:
             ):
                 if vacancy:
                     jobs_list.append(vacancy)
+        
+        if not jobs_list:
+            print("[ПРЕДУПРЕЖДЕНИЕ]: Не найдено вакансий. Проверьте критерии поиска.")
+            return {key: [] for key in self.__DICT_KEYS}
 
         unzipped_list = list(zip(*jobs_list))
 

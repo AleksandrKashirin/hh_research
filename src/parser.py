@@ -91,7 +91,7 @@ class Settings:
         self.update: bool = False
 
         # Get config from file
-        with open(config_path, "r") as cfg:
+        with open(config_path, "r", encoding="utf-8") as cfg:
             config: Dict = json.load(cfg)
 
         if not no_parse:
