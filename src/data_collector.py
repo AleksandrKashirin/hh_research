@@ -36,7 +36,7 @@ OR CORRECTION.
 import hashlib
 import os
 import pickle
-import random
+import random  # Добавляем импорт random для случайных задержек
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -51,33 +51,41 @@ from urllib3.util.retry import Retry
 CACHE_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "cache")
 
 
+def random_delay(base=1.0, variation=0.5):
+    """Добавляет случайную задержку для предотвращения блокировки"""
+    delay = base + random.uniform(-variation, variation)
+    time.sleep(max(0.5, delay))  # Минимум 0.5 секунды
+
+
 def create_robust_session():
     """Создает надежную сессию requests с настройками повторных попыток и таймаутов"""
     session = requests.Session()
-    
+
     # Настраиваем стратегию повторных попыток с большими задержками
     retry_strategy = Retry(
-        total=3,  # Уменьшаем количество попыток
+        total=35,  # Уменьшаем количество попыток
         backoff_factor=2,  # Увеличиваем фактор задержки
         status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["GET"]
+        allowed_methods=["GET"],
     )
-    
+
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session.mount("https://", adapter)
-    
+
     # Увеличиваем таймаут
     session.timeout = 15
-    
+
     # Добавляем более реалистичные заголовки браузера
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Connection": "keep-alive",
-        "DNT": "1"
-    })
-    
+    session.headers.update(
+        {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Connection": "keep-alive",
+            "DNT": "1",
+        }
+    )
+
     return session
 
 
@@ -361,9 +369,9 @@ class DataCollector:
             Dict of useful arguments from vacancies
         """
         # Извлекаем специальные параметры
-        self.contains = query.pop("contains", None)  # Извлекаем параметр contains
-        max_vacancies = query.pop("max_vacancies", None)  # Извлекаем max_vacancies
-
+        self.contains = query.pop('contains', None)  # Извлекаем параметр contains
+        max_vacancies = query.pop('max_vacancies', None)  # Извлекаем max_vacancies
+        
         if num_workers is None or num_workers < 1:
             num_workers = 1
 
@@ -379,7 +387,14 @@ class DataCollector:
         try:
             if not refresh:
                 print(f"[INFO]: Получение результатов из кэша! Включите опцию refresh для обновления данных.")
-                return pickle.load(open(cache_file, "rb"))
+                cached_result = pickle.load(open(cache_file, "rb"))
+                # Если в кэшированных данных нет статистики, добавляем приблизительные значения
+                if "stats" not in cached_result:
+                    cached_result["stats"] = {
+                        "found_vacancies": "Данные из кэша (неизвестно)",
+                        "processed_vacancies": len(cached_result.get("Ids", []))
+                    }
+                return cached_result
         except (FileNotFoundError, pickle.UnpicklingError):
             print(f"[INFO]: Кэш не найден или поврежден. Будет выполнен новый запрос к API.")
             pass
@@ -388,7 +403,7 @@ class DataCollector:
         try:
             target_url = self.__API_BASE_URL + "?" + url_params
             print(f"[INFO]: Запрос к API: {target_url}")
-
+            
             # Пробуем получить данные с повторными попытками
             response = None
             data = None
@@ -402,57 +417,63 @@ class DataCollector:
                     print(f"[ПРЕДУПРЕЖДЕНИЕ]: Попытка {attempt+1}/3 не удалась: {str(e)}")
                     if attempt == 2:  # Последняя попытка
                         raise
-                    time.sleep(2 * (attempt + 2))  # Увеличиваем задержку с каждой попыткой
-
+                    time.sleep(2 * (attempt + 1))  # Увеличиваем задержку с каждой попыткой
+            
             if not data:
                 print("[ОШИБКА]: Не удалось получить данные от API после нескольких попыток.")
                 return {key: [] for key in self.__DICT_KEYS}
-
+                
             num_pages = data.get("pages", 0)
+            found_vacancies = data.get("found", 0)  # Общее количество найденных вакансий
             print(f"[INFO]: Найдено страниц: {num_pages}")
-
+            print(f"[INFO]: Всего найдено вакансий: {found_vacancies}")
+            
             # Если нет страниц или данных, возвращаем пустой результат
             if num_pages == 0 or "items" not in data:
                 print("[ПРЕДУПРЕЖДЕНИЕ]: Не найдено данных. Проверьте параметры запроса.")
-                return {key: [] for key in self.__DICT_KEYS}
-
+                empty_result = {key: [] for key in self.__DICT_KEYS}
+                empty_result["stats"] = {
+                    "found_vacancies": 0,
+                    "processed_vacancies": 0
+                }
+                return empty_result
+                
             # Собираем ID вакансий из первой страницы
             ids = []
             ids.extend(x["id"] for x in data["items"])
-
-            # Получаем остальные страницы
-            for idx in range(1, min(num_pages, 20) + 1):  # Ограничиваем 20 страницами для безопасности
+            
+            # Получаем остальные страницы - здесь убираем ограничение в 20 страниц
+            for idx in range(1, num_pages):
                 try:
-                    sleep_time = 1.5 + random.random() * 2
-                    time.sleep(sleep_time)
                     print(f"[INFO]: Получение страницы {idx}/{num_pages}...")
                     response = session.get(target_url, params={"page": idx}, timeout=10)
                     response.raise_for_status()
                     page_data = response.json()
-
+                    
                     if "items" in page_data:
                         new_ids = [x["id"] for x in page_data["items"]]
                         ids.extend(new_ids)
                         print(f"[INFO]: Добавлено {len(new_ids)} вакансий с страницы {idx}")
-
+                        
                     # Проверяем ограничение по количеству вакансий
                     if max_vacancies and len(ids) >= max_vacancies:
                         ids = ids[:max_vacancies]
                         print(f"[INFO]: Достигнут лимит в {max_vacancies} вакансий")
                         break
-
-                    # Небольшая задержка, чтобы не нагружать API
-                    time.sleep(0.5)
-
+                        
+                    # Добавляем задержку между запросами страниц
+                    time.sleep(random.uniform(0.5, 1.5))
+                    
                 except Exception as e:
                     print(f"[ПРЕДУПРЕЖДЕНИЕ]: Ошибка при получении страницы {idx}: {str(e)}")
+                    time.sleep(2.0)  # Увеличенная задержка при ошибке
                     continue
-
+            
             print(f"[INFO]: Всего найдено {len(ids)} ID вакансий. Начинаем получение подробных данных...")
-
+            
             # Собираем данные о вакансиях с использованием многопоточности
             jobs_list = []
-
+            
             # Функция для получения вакансии с повторными попытками
             def get_vacancy_with_retry(vacancy_id):
                 for retry in range(3):
@@ -460,64 +481,76 @@ class DataCollector:
                         result = self.get_vacancy(vacancy_id)
                         return result
                     except Exception as e:
-                        print(
-                            f"[ПРЕДУПРЕЖДЕНИЕ]: Ошибка при получении вакансии {vacancy_id} (попытка {retry+1}/3): {str(e)}"
-                        )
+                        print(f"[ПРЕДУПРЕЖДЕНИЕ]: Ошибка при получении вакансии {vacancy_id} (попытка {retry+1}/3): {str(e)}")
                         time.sleep(1 + retry)
                 return None
-
+            
             # Используем ThreadPoolExecutor для параллельной обработки
             with ThreadPoolExecutor(max_workers=num_workers) as executor:
                 # Создаем список задач
                 futures = [executor.submit(get_vacancy_with_retry, vac_id) for vac_id in ids]
-
+                
                 # Отображаем прогресс выполнения
-                for i, future in enumerate(
-                    tqdm(
-                        futures,
-                        desc="Получение данных через API HH",
-                        ncols=100,
-                        total=len(ids),
-                    )
-                ):
+                for i, future in enumerate(tqdm(
+                    futures, 
+                    desc="Получение данных через API HH",
+                    ncols=100,
+                    total=len(ids),
+                )):
                     try:
                         vacancy = future.result()
                         if vacancy:
                             jobs_list.append(vacancy)
                     except Exception as e:
                         print(f"[ПРЕДУПРЕЖДЕНИЕ]: Не удалось обработать задачу #{i}: {str(e)}")
-
-            print(f"[INFO]: Успешно получено {len(jobs_list)} вакансий из {len(ids)}")
-
+            
+            processed_vacancies = len(jobs_list)
+            print(f"[INFO]: Успешно получено {processed_vacancies} вакансий из {len(ids)}")
+            
             # Проверяем, есть ли результаты
             if not jobs_list:
                 print("[ПРЕДУПРЕЖДЕНИЕ]: Нет данных для обработки после фильтрации.")
-                return {key: [] for key in self.__DICT_KEYS}
-
+                empty_result = {key: [] for key in self.__DICT_KEYS}
+                empty_result["stats"] = {
+                    "found_vacancies": found_vacancies,
+                    "processed_vacancies": 0
+                }
+                return empty_result
+                
             # Транспонируем список кортежей в словарь по ключам
             unzipped_list = list(zip(*jobs_list))
             result = {}
-
+            
             for idx, key in enumerate(self.__DICT_KEYS):
                 result[key] = unzipped_list[idx]
-
+                
+            # Добавляем статистику
+            result["stats"] = {
+                "found_vacancies": found_vacancies,
+                "processed_vacancies": processed_vacancies
+            }
+                
             # Сохраняем результаты в кэш
             try:
                 # Проверяем, существует ли директория кэша
                 if not os.path.exists(CACHE_DIR):
                     os.makedirs(CACHE_DIR)
-
+                    
                 pickle.dump(result, open(cache_file, "wb"))
                 print(f"[INFO]: Результаты сохранены в кэш: {cache_file}")
             except Exception as e:
                 print(f"[ПРЕДУПРЕЖДЕНИЕ]: Не удалось сохранить результаты в кэш: {str(e)}")
-
+                
             return result
-
+            
         except Exception as e:
             print(f"[ОШИБКА]: Не удалось получить данные от API: {str(e)}")
-            return {key: [] for key in self.__DICT_KEYS}
-
+            empty_result = {key: [] for key in self.__DICT_KEYS}
+            empty_result["stats"] = {
+                "found_vacancies": 0,
+                "processed_vacancies": 0
+            }
+            return empty_result
 
 if __name__ == "__main__":
     dc = DataCollector(exchange_rates={"USD": 0.01264, "EUR": 0.01083, "RUR": 1.00000})

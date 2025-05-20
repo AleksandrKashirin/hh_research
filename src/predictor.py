@@ -81,7 +81,6 @@ class Predictor:
         plt.grid(False)
         plt.yticks([], [])
         plt.tight_layout()
-        plt.show()
 
     def predict(self, df: pd.DataFrame, min_df_threshold: int = 5) -> pd.DataFrame:
         """Prepare data frame and save results

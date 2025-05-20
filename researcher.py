@@ -84,11 +84,15 @@ class ResearcherHH:
         vacancies = self.collector.collect_vacancies(
             query=self.settings.options, refresh=self.settings.refresh, num_workers=self.settings.num_workers
         )
+        
+        # Извлекаем статистику о найденных и обработанных вакансиях
+        stats = vacancies.pop("stats", None)
+        
         print("[INFO]: Prepare dataframe...")
         df = self.analyzer.prepare_df(vacancies)
         print("\n[INFO]: Analyze dataframe...")
         self.analyzer.analyze_df(df)
-        self.analyzer.analyze_and_save_results(df)
+        self.analyzer.analyze_and_save_results(df, stats=stats)
         # print("\n[INFO]: Predict None salaries...")
         # total_df = self.predictor.predict(df)
         # self.predictor.plot_results(total_df)

@@ -33,6 +33,7 @@ OR CORRECTION.
 # Contacts      : <empty>
 # License       : GNU GENERAL PUBLIC LICENSE
 
+import csv
 import os
 import re
 from typing import Dict, List
@@ -141,17 +142,25 @@ class Analyzer:
             Dict of parsed vacancies.
 
         """
+        # Если в vacancies остался ключ "stats", удаляем его
+        if "stats" in vacancies:
+            vacancies.pop("stats", None)
 
         # Create pandas dataframe
         df = pd.DataFrame.from_dict(vacancies)
-        # Print some info from data frame
-        with pd.option_context("display.max_rows", None, "display.max_columns", None):
-            print(df[df["Salary"]][["Employer", "From", "To"]][0:15])
+
+        # Проверяем, что DataFrame не пустой и содержит необходимые столбцы
+        if not df.empty and all(col in df.columns for col in ["Employer", "From", "To", "Salary"]):
+            # Print some info from data frame
+            with pd.option_context("display.max_rows", None, "display.max_columns", None):
+                print(df[df["Salary"]][["Employer", "From", "To"]][0:15])
+        else:
+            print("\n[ПРЕДУПРЕЖДЕНИЕ]: DataFrame пустой или не содержит ожидаемых столбцов")
+
         # Save to file
-        if self.save_csv:
+        if self.save_csv and not df.empty:
             print("\n\n[INFO]: Save dataframe to file...")
-            output_dir = self.get_output_directory()
-            df.to_csv(os.path.join(output_dir, "hh_results.csv"), index=False)
+            df.to_csv(rf"hh_results.csv", index=False)
         return df
 
     def analyze_df(self, df: pd.DataFrame):
@@ -216,14 +225,48 @@ class Analyzer:
         plt.tight_layout()
         output_dir = self.get_output_directory()
         plt.savefig(os.path.join(output_dir, "salary_distribution.png"))
-        plt.show()
 
-    def analyze_and_save_results(self, df, output_filename="salary_analysis.csv"):
+    def analyze_and_save_results(self, df, output_filename="salary_analysis.csv", stats=None):
         """Загружает DataFrame, анализирует результаты и сохраняет в CSV"""
         sns.set()
 
-        # Создаем словарь для хранения результатов анализа
+        # Создаем словарь для хранения результатов анализа с разделами
         analysis_results = {"Метрика": [], "Значение": []}
+
+        # -------- РАЗДЕЛ: ОБЩАЯ ИНФОРМАЦИЯ --------
+        # Добавляем заголовок раздела
+        analysis_results["Метрика"].append("___ ОБЩАЯ ИНФОРМАЦИЯ ___")
+        analysis_results["Значение"].append("")
+
+        # Добавляем информацию о найденных и обработанных вакансиях, если доступно
+        if stats:
+            found_vacancies = stats.get("found_vacancies", "Н/Д")
+            processed_vacancies = stats.get("processed_vacancies", "Н/Д")
+
+            analysis_results["Метрика"].extend(["Всего найдено вакансий по запросу", "Успешно обработано вакансий"])
+            analysis_results["Значение"].extend([found_vacancies, processed_vacancies])
+
+        # Добавляем количество вакансий в DataFrame
+        if not df.empty:
+            vac_count = df["URL"].count()
+            analysis_results["Метрика"].append("Количество вакансий в выборке")
+            analysis_results["Значение"].append(vac_count)
+
+        # Добавляем пустую строку как разделитель
+        analysis_results["Метрика"].append("")
+        analysis_results["Значение"].append("")
+
+        # Если DataFrame пустой, сохраняем только базовую информацию
+        if df.empty:
+            print(f"\n[ПРЕДУПРЕЖДЕНИЕ]: DataFrame пустой, сохраняем только базовую статистику в {output_filename}")
+            results_df = pd.DataFrame(analysis_results)
+            results_df.to_csv(output_filename, index=False, encoding="utf-8-sig", quoting=csv.QUOTE_MINIMAL)
+            print(f"\n[ИНФО]: Базовая статистика сохранена в файл {output_filename}")
+            return
+
+        # -------- РАЗДЕЛ: РАСПРЕДЕЛЕНИЕ ПО КАТЕГОРИЯМ --------
+        analysis_results["Метрика"].append("___ РАСПРЕДЕЛЕНИЕ ПО КАТЕГОРИЯМ ___")
+        analysis_results["Значение"].append("")
 
         if "ProfessionName" in df.columns:
             # Подсчитываем количество вакансий по профессиям
@@ -232,9 +275,16 @@ class Analyzer:
             print(profession_counts.head(10))  # Топ-10 профессий
 
             # Добавляем в результаты анализа
+            analysis_results["Метрика"].append("-- Распределение по профессиям --")
+            analysis_results["Значение"].append("")
+
             for profession, count in profession_counts.head(5).items():
                 analysis_results["Метрика"].append(f"Профессия: {profession}")
                 analysis_results["Значение"].append(count)
+
+            # Пустая строка после блока
+            analysis_results["Метрика"].append("")
+            analysis_results["Значение"].append("")
 
         if "IndustryName" in df.columns:
             # Подсчитываем количество вакансий по отраслям
@@ -243,9 +293,16 @@ class Analyzer:
             print(industry_counts.head(10))  # Топ-10 отраслей
 
             # Добавляем в результаты анализа
+            analysis_results["Метрика"].append("-- Распределение по отраслям --")
+            analysis_results["Значение"].append("")
+
             for industry, count in industry_counts.head(5).items():
                 analysis_results["Метрика"].append(f"Отрасль: {industry}")
                 analysis_results["Значение"].append(count)
+
+            # Пустая строка после блока
+            analysis_results["Метрика"].append("")
+            analysis_results["Значение"].append("")
 
         if "IndustryGroupName" in df.columns:
             # Подсчитываем количество вакансий по группам индустрий
@@ -254,13 +311,20 @@ class Analyzer:
             print(industry_group_counts.head(10))  # Топ-10 групп индустрий
 
             # Добавляем в результаты анализа
+            analysis_results["Метрика"].append("-- Распределение по группам индустрий --")
+            analysis_results["Значение"].append("")
+
             for group, count in industry_group_counts.head(5).items():
                 analysis_results["Метрика"].append(f"Группа индустрий: {group}")
                 analysis_results["Значение"].append(count)
 
-        # Добавляем базовую статистику
-        analysis_results["Метрика"].append("Количество вакансий")
-        analysis_results["Значение"].append(df["URL"].count())
+            # Пустая строка после блока
+            analysis_results["Метрика"].append("")
+            analysis_results["Значение"].append("")
+
+        # -------- РАЗДЕЛ: ЭКСТРЕМАЛЬНЫЕ ЗНАЧЕНИЯ ЗАРПЛАТ --------
+        analysis_results["Метрика"].append("___ ЭКСТРЕМАЛЬНЫЕ ЗНАЧЕНИЯ ЗАРПЛАТ ___")
+        analysis_results["Значение"].append("")
 
         # Максимальные значения
         max_from_idx = df["From"].idxmax()
@@ -282,6 +346,10 @@ class Analyzer:
             ]
         )
 
+        # Пустая строка после блока
+        analysis_results["Метрика"].append("")
+        analysis_results["Значение"].append("")
+
         # Минимальные значения
         min_from_idx = df[df["From"] > 0]["From"].idxmin()  # Игнорируем нулевые значения
         min_to_idx = df[df["To"] > 0]["To"].idxmin()  # Игнорируем нулевые значения
@@ -302,6 +370,14 @@ class Analyzer:
             ]
         )
 
+        # Пустая строка после блока
+        analysis_results["Метрика"].append("")
+        analysis_results["Значение"].append("")
+
+        # -------- РАЗДЕЛ: СТАТИСТИКА ПО ЗАРПЛАТАМ --------
+        analysis_results["Метрика"].append("___ СТАТИСТИКА ПО ЗАРПЛАТАМ ___")
+        analysis_results["Значение"].append("")
+
         # Статистика по зарплатам с русскими названиями
         stats_mapping = {
             "count": "количество",
@@ -314,9 +390,33 @@ class Analyzer:
         # Вычисляем статистику только для ненулевых значений
         df_stat = df[df["Salary"]][["From", "To"]].describe().applymap(np.int32)
 
+        # Статистика "От"
+        analysis_results["Метрика"].append('-- Статистика "От" --')
+        analysis_results["Значение"].append("")
+
         for stat, stat_ru in stats_mapping.items():
-            analysis_results["Метрика"].extend([f'зарплата "От" ({stat_ru})', f'зарплата "До" ({stat_ru})'])
-            analysis_results["Значение"].extend([df_stat.loc[stat, "From"], df_stat.loc[stat, "To"]])
+            analysis_results["Метрика"].append(f'Зарплата "От" ({stat_ru})')
+            analysis_results["Значение"].append(df_stat.loc[stat, "From"])
+
+        # Пустая строка после блока
+        analysis_results["Метрика"].append("")
+        analysis_results["Значение"].append("")
+
+        # Статистика "До"
+        analysis_results["Метрика"].append('-- Статистика "До" --')
+        analysis_results["Значение"].append("")
+
+        for stat, stat_ru in stats_mapping.items():
+            analysis_results["Метрика"].append(f'Зарплата "До" ({stat_ru})')
+            analysis_results["Значение"].append(df_stat.loc[stat, "To"])
+
+        # Пустая строка после блока
+        analysis_results["Метрика"].append("")
+        analysis_results["Значение"].append("")
+
+        # -------- РАЗДЕЛ: СВОДНАЯ СТАТИСТИКА --------
+        analysis_results["Метрика"].append("___ СВОДНАЯ СТАТИСТИКА ___")
+        analysis_results["Значение"].append("")
 
         # Усредненная статистика с русскими названиями
         salary_data = df[df["Salary"]][["From", "To"]]
@@ -335,16 +435,17 @@ class Analyzer:
         )
 
         # Создаем DataFrame с результатами и сохраняем в CSV
-        output_dir = self.get_output_directory()
         results_df = pd.DataFrame(analysis_results)
-        results_df.to_csv(os.path.join(output_dir, output_filename), index=False, encoding="utf-8-sig")
+        results_df.to_csv(output_filename, index=False, encoding="utf-8-sig", quoting=csv.QUOTE_MINIMAL, sep=";")
 
-        print(f"\n[ИНФО]: Результаты анализа сохранены в файл {os.path.join(output_dir, output_filename)}")
+        print(f"\n[ИНФО]: Результаты анализа сохранены в файл {output_filename}")
 
         # Выводим результаты в консоль для проверки
         print("\nКраткий обзор результатов:")
-        for metric, value in zip(analysis_results["Метрика"], analysis_results["Значение"]):
-            print(f"{metric}: {value}")
+        for i, (metric, value) in enumerate(zip(analysis_results["Метрика"], analysis_results["Значение"])):
+            # Пропускаем пустые строки и заголовки разделов для консольного вывода
+            if metric and not metric.startswith("___") and not metric.startswith("--"):
+                print(f"{metric}: {value}")
 
         print("\n[ИНФО]: Анализ завершен!")
 
