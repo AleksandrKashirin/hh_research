@@ -74,7 +74,10 @@ class ResearcherHH:
 
         print(f"[INFO]: Get exchange rates: {self.settings.rates}")
         self.collector = DataCollector(self.settings.rates)
-        self.analyzer = Analyzer(self.settings.save_result)
+
+        # Получаем название профессии из настроек
+        profession_name = self.settings.options.get("text", "unknown") if self.settings.options else "unknown"
+        self.analyzer = Analyzer(self.settings.save_result, profession_name)
 
     def __call__(self):
         print("[INFO]: Collect data from JSON. Create list of vacancies...")

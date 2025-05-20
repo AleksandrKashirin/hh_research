@@ -33,6 +33,7 @@ OR CORRECTION.
 # Contacts      : <empty>
 # License       : GNU GENERAL PUBLIC LICENSE
 
+import os
 import re
 from typing import Dict, List
 
@@ -44,12 +45,23 @@ import seaborn as sns
 
 
 class Analyzer:
-    def __init__(self, save_csv: bool = False):
+    def __init__(self, save_csv: bool = False, profession_name: str = "unknown"):
         self.save_csv = save_csv
+        self.profession_name = profession_name
         # try:
         #     nltk.download("stopwords")
         # except:
         #     print(r"[INFO] You have downloaded stopwords!")
+
+    def get_output_directory(self):
+        """Создает и возвращает путь к директории для сохранения результатов"""
+        # Безопасное имя папки
+        safe_name = re.sub(r'[\\/*?:"<>|]', "_", self.profession_name)
+        # Создаем путь к директории
+        output_dir = os.path.join("data", safe_name)
+        # Создаем директорию, если она не существует
+        os.makedirs(output_dir, exist_ok=True)
+        return output_dir
 
     @staticmethod
     def find_top_words_from_keys(keys_list: List) -> pd.Series:
@@ -138,7 +150,8 @@ class Analyzer:
         # Save to file
         if self.save_csv:
             print("\n\n[INFO]: Save dataframe to file...")
-            df.to_csv(rf"hh_results.csv", index=False)
+            output_dir = self.get_output_directory()
+            df.to_csv(os.path.join(output_dir, "hh_results.csv"), index=False)
         return df
 
     def analyze_df(self, df: pd.DataFrame):
@@ -148,9 +161,9 @@ class Analyzer:
         # print(df[df["Salary"]][0:7])
 
         # print("\nNumber of vacancies: {}".format(df["Ids"].count()))
-        # print("\nВакансии с максимальной годовой стоимостью работника: ")
+        # print("\nВакансии с максимальной годовой зарплатаю работника: ")
         # print(df.iloc[df[["From", "To"]].idxmax()])
-        # print("\nВакансии с минимальной годовой стоимостью работника: ")
+        # print("\nВакансии с минимальной годовой зарплатаю работника: ")
         # print(df.iloc[df[["From", "To"]].idxmin()])
 
         # print("\n[ИНФО]: Описание таблицы стоимости работника")
@@ -178,18 +191,18 @@ class Analyzer:
         fz.add_subplot(2, 2, 1)
         plt.title("От / До: Диаграмма размаха")
         sns.boxplot(data=df[["From", "To"]].dropna() / 1000, width=0.4)
-        plt.ylabel("Стоимость x 1000 [РУБ]")
+        plt.ylabel("Зарплата x 1000 [РУБ]")
 
         fz.add_subplot(2, 2, 2)
         plt.title("От / До: Диаграмма рассеяния")
         sns.swarmplot(data=df[["From", "To"]].dropna() / 1000, size=6)
-        plt.ylabel("Стоимость x 1000 [РУБ]")
+        plt.ylabel("Зарплата x 1000 [РУБ]")
 
         fz.add_subplot(2, 2, 3)
         plt.title("От: Распределение")
         sns.histplot(df["From"].dropna() / 1000, bins=20, color="C0", kde=True)
         plt.grid(True)
-        plt.xlabel("Стоимость x 1000 [РУБ]")
+        plt.xlabel("Зарплата x 1000 [РУБ]")
         plt.xlim([df["From"].min() / 1000, df["From"].max() / 1000])
         plt.yticks([], [])
 
@@ -198,9 +211,11 @@ class Analyzer:
         sns.histplot(df["To"].dropna() / 1000, bins=20, color="C1", kde=True)
         plt.grid(True)
         plt.xlim([df["To"].min() / 1000, df["To"].max() / 1000])
-        plt.xlabel("Стоимость x 1000 [РУБ]")
+        plt.xlabel("Зарплата x 1000 [РУБ]")
         plt.yticks([], [])
         plt.tight_layout()
+        output_dir = self.get_output_directory()
+        plt.savefig(os.path.join(output_dir, "salary_distribution.png"))
         plt.show()
 
     def analyze_and_save_results(self, df, output_filename="salary_analysis.csv"):
@@ -252,9 +267,9 @@ class Analyzer:
         max_to_idx = df["To"].idxmax()
         analysis_results["Метрика"].extend(
             [
-                'Максимальная стоимость "От" (руб)',
+                'Максимальная зарплата "От" (руб)',
                 "Название вакансии (макс. От)",
-                'Максимальная стоимость "До" (руб)',
+                'Максимальная зарплата "До" (руб)',
                 "Название вакансии (макс. До)",
             ]
         )
@@ -272,9 +287,9 @@ class Analyzer:
         min_to_idx = df[df["To"] > 0]["To"].idxmin()  # Игнорируем нулевые значения
         analysis_results["Метрика"].extend(
             [
-                'Минимальная стоимость "От" (руб)',
+                'Минимальная зарплата "От" (руб)',
                 "Название вакансии (мин. От)",
-                'Минимальная стоимость "До" (руб)',
+                'Минимальная зарплата "До" (руб)',
                 "Название вакансии (мин. До)",
             ]
         )
@@ -300,7 +315,7 @@ class Analyzer:
         df_stat = df[df["Salary"]][["From", "To"]].describe().applymap(np.int32)
 
         for stat, stat_ru in stats_mapping.items():
-            analysis_results["Метрика"].extend([f'Стоимость "От" ({stat_ru})', f'Стоимость "До" ({stat_ru})'])
+            analysis_results["Метрика"].extend([f'зарплата "От" ({stat_ru})', f'зарплата "До" ({stat_ru})'])
             analysis_results["Значение"].extend([df_stat.loc[stat, "From"], df_stat.loc[stat, "To"]])
 
         # Усредненная статистика с русскими названиями
@@ -309,10 +324,10 @@ class Analyzer:
 
         analysis_results["Метрика"].extend(
             [
-                "Минимальная стоимость (среднее)",
-                "Максимальная стоимость (среднее)",
-                "Средняя стоимость по всем вакансиям",
-                "Медианная стоимость по всем вакансиям",
+                "Минимальная зарплата (среднее)",
+                "Максимальная зарплата (среднее)",
+                "Средняя зарплата по всем вакансиям",
+                "Медианная зарплата по всем вакансиям",
             ]
         )
         analysis_results["Значение"].extend(
@@ -320,10 +335,11 @@ class Analyzer:
         )
 
         # Создаем DataFrame с результатами и сохраняем в CSV
+        output_dir = self.get_output_directory()
         results_df = pd.DataFrame(analysis_results)
-        results_df.to_csv(output_filename, index=False, encoding="utf-8-sig")
+        results_df.to_csv(os.path.join(output_dir, output_filename), index=False, encoding="utf-8-sig")
 
-        print(f"\n[ИНФО]: Результаты анализа сохранены в файл {output_filename}")
+        print(f"\n[ИНФО]: Результаты анализа сохранены в файл {os.path.join(output_dir, output_filename)}")
 
         # Выводим результаты в консоль для проверки
         print("\nКраткий обзор результатов:")
