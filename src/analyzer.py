@@ -140,7 +140,6 @@ class Analyzer:
         ----------
         vacancies: dict
             Dict of parsed vacancies.
-
         """
         # Если в vacancies остался ключ "stats", удаляем его
         if "stats" in vacancies:
@@ -148,7 +147,7 @@ class Analyzer:
 
         # Create pandas dataframe
         df = pd.DataFrame.from_dict(vacancies)
-
+        
         # Проверяем, что DataFrame не пустой и содержит необходимые столбцы
         if not df.empty and all(col in df.columns for col in ["Employer", "From", "To", "Salary"]):
             # Print some info from data frame
@@ -156,80 +155,102 @@ class Analyzer:
                 print(df[df["Salary"]][["Employer", "From", "To"]][0:15])
         else:
             print("\n[ПРЕДУПРЕЖДЕНИЕ]: DataFrame пустой или не содержит ожидаемых столбцов")
-
-        # Save to file
+        
+        # Save to file в каталог профессии, а не в корень проекта
         if self.save_csv and not df.empty:
-            print("\n\n[INFO]: Save dataframe to file...")
-            df.to_csv(rf"hh_results.csv", index=False)
+            output_dir = self.get_output_directory()
+            csv_path = os.path.join(output_dir, "hh_results.csv")
+            print(f"\n\n[INFO]: Сохранение DataFrame в {csv_path}")
+            df.to_csv(csv_path, index=False, sep=';')
+        
         return df
 
     def analyze_df(self, df: pd.DataFrame):
         """Load data frame and analyze results"""
         sns.set()
-        # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-        # print(df[df["Salary"]][0:7])
-
-        # print("\nNumber of vacancies: {}".format(df["Ids"].count()))
-        # print("\nВакансии с максимальной годовой зарплатаю работника: ")
-        # print(df.iloc[df[["From", "To"]].idxmax()])
-        # print("\nВакансии с минимальной годовой зарплатаю работника: ")
-        # print(df.iloc[df[["From", "To"]].idxmin()])
-
-        # print("\n[ИНФО]: Описание таблицы стоимости работника")
-        # df_stat = df[["From", "To"]].describe().applymap(np.int32)
-        # print(df_stat.iloc[list(range(4)) + [-1]])
-
-        # print('\n[ИНФО]: Усредненная статистика:')
-        # comb_ft = np.nanmean(df[df["Salary"]][["From", "To"]].to_numpy(), axis=1)
-        # print("Описание данных по стоимости работника:")
-        # print("Минимальная    : %d" % np.min(comb_ft))
-        # print("Максимальная    : %d" % np.max(comb_ft))
-        # print("Средняя   : %d" % np.mean(comb_ft))
-        # print("Медиана : %d" % np.median(comb_ft))
-
-        # print("\nMost frequently used words [Keywords]:")
-        # most_keys = self.find_top_words_from_keys(df["Keys"].to_list())
-        # print(most_keys[:12])
-
-        # print("\nMost frequently used words [Description]:")
-        # most_words = self.find_top_words_from_description(df["Description"].to_list())
-        # print(most_words[:12])
+        
+        # Проверяем, что DataFrame не пустой
+        if df.empty:
+            print("\n[ПРЕДУПРЕЖДЕНИЕ]: DataFrame пуст, невозможно построить графики.")
+            return
+        
+        # Проверяем, что DataFrame содержит необходимые столбцы
+        if not all(col in df.columns for col in ["From", "To"]):
+            print("\n[ПРЕДУПРЕЖДЕНИЕ]: DataFrame не содержит столбцы From и To, невозможно построить графики.")
+            return
+        
+        # Проверяем, что существуют непустые значения для построения графиков
+        if df["From"].dropna().empty and df["To"].dropna().empty:
+            print("\n[ПРЕДУПРЕЖДЕНИЕ]: Нет данных о зарплатах для построения графиков.")
+            return
 
         print("\n[ИНФО]: Построение графиков. Закройте окно с графиками для продолжения...")
+        
+        # Создаем каталог для сохранения графиков, если он еще не существует
+        output_dir = self.get_output_directory()
+        os.makedirs(output_dir, exist_ok=True)
+        
         fz = plt.figure("Графики стоимостей работника", figsize=(12, 8))
+        
+        # График 1: Диаграмма размаха
         fz.add_subplot(2, 2, 1)
         plt.title("От / До: Диаграмма размаха")
         sns.boxplot(data=df[["From", "To"]].dropna() / 1000, width=0.4)
         plt.ylabel("Зарплата x 1000 [РУБ]")
 
+        # График 2: Диаграмма рассеяния
         fz.add_subplot(2, 2, 2)
         plt.title("От / До: Диаграмма рассеяния")
         sns.swarmplot(data=df[["From", "To"]].dropna() / 1000, size=6)
         plt.ylabel("Зарплата x 1000 [РУБ]")
 
+        # График 3: Распределение "От"
         fz.add_subplot(2, 2, 3)
         plt.title("От: Распределение")
-        sns.histplot(df["From"].dropna() / 1000, bins=20, color="C0", kde=True)
-        plt.grid(True)
-        plt.xlabel("Зарплата x 1000 [РУБ]")
-        plt.xlim([df["From"].min() / 1000, df["From"].max() / 1000])
+        if not df["From"].dropna().empty:
+            sns.histplot(df["From"].dropna() / 1000, bins=20, color="C0", kde=True)
+            plt.grid(True)
+            plt.xlabel("Зарплата x 1000 [РУБ]")
+            plt.xlim([df["From"].min() / 1000, df["From"].max() / 1000])
         plt.yticks([], [])
 
+        # График 4: Распределение "До"
         fz.add_subplot(2, 2, 4)
         plt.title("До: Распределение")
-        sns.histplot(df["To"].dropna() / 1000, bins=20, color="C1", kde=True)
-        plt.grid(True)
-        plt.xlim([df["To"].min() / 1000, df["To"].max() / 1000])
-        plt.xlabel("Зарплата x 1000 [РУБ]")
+        if not df["To"].dropna().empty:
+            sns.histplot(df["To"].dropna() / 1000, bins=20, color="C1", kde=True)
+            plt.grid(True)
+            plt.xlabel("Зарплата x 1000 [РУБ]")
+            plt.xlim([df["To"].min() / 1000, df["To"].max() / 1000])
         plt.yticks([], [])
+        
+        # Улучшаем расположение элементов
         plt.tight_layout()
-        output_dir = self.get_output_directory()
-        plt.savefig(os.path.join(output_dir, "salary_distribution.png"))
+        
+        # Сохраняем график в каталог профессии
+        plot_path = os.path.join(output_dir, "salary_distribution.png")
+        print(f"[ИНФО]: Сохранение графика в {plot_path}")
+        plt.savefig(plot_path, dpi=100, bbox_inches='tight')
+        
+        # Показываем график (опционально, можно закомментировать для автоматического режима)
+        # plt.show()
+        
+        # Также сохраняем DataFrame для этой профессии
+        csv_path = os.path.join(output_dir, "hh_results.csv")
+        print(f"[ИНФО]: Сохранение DataFrame в {csv_path}")
+        df.to_csv(csv_path, index=False, sep=';')
 
-    def analyze_and_save_results(self, df, output_filename="salary_analysis.csv", stats=None):
+    def analyze_and_save_results(self, df, output_filename=None, stats=None):
         """Загружает DataFrame, анализирует результаты и сохраняет в CSV"""
         sns.set()
 
+        # Определяем путь к выходному файлу
+        if output_filename is None:
+            output_dir = self.get_output_directory()
+            output_filename = os.path.join(output_dir, "salary_analysis.csv")
+
+        print(f"[ИНФО]: Анализ будет сохранен в {output_filename}")
+        
         # Создаем словарь для хранения результатов анализа с разделами
         analysis_results = {"Метрика": [], "Значение": []}
 

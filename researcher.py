@@ -78,6 +78,7 @@ class ResearcherHH:
         # Получаем название профессии из настроек
         profession_name = self.settings.options.get("text", "unknown") if self.settings.options else "unknown"
         self.analyzer = Analyzer(self.settings.save_result, profession_name)
+        print(f"[INFO]: Анализ будет выполнен для профессии: {profession_name}")
 
     def __call__(self):
         print("[INFO]: Collect data from JSON. Create list of vacancies...")
@@ -91,11 +92,17 @@ class ResearcherHH:
         print("[INFO]: Prepare dataframe...")
         df = self.analyzer.prepare_df(vacancies)
         print("\n[INFO]: Analyze dataframe...")
+        
+        # Создаем выходной каталог для текущей профессии
+        output_dir = self.analyzer.get_output_directory()
+        
+        # Анализируем данные
         self.analyzer.analyze_df(df)
-        self.analyzer.analyze_and_save_results(df, stats=stats)
-        # print("\n[INFO]: Predict None salaries...")
-        # total_df = self.predictor.predict(df)
-        # self.predictor.plot_results(total_df)
+        
+        # Сохраняем анализ
+        output_filename = os.path.join(output_dir, "salary_analysis.csv")
+        self.analyzer.analyze_and_save_results(df, output_filename=output_filename, stats=stats)
+        
         print("[INFO]: Done! Exit()")
 
 
