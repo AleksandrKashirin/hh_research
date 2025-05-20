@@ -116,3 +116,4 @@ src/cache/**/*
 
 *.csv
 data/
+old_data/

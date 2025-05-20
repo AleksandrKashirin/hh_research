@@ -142,9 +142,7 @@ class Analyzer:
         return df
 
     def analyze_df(self, df: pd.DataFrame):
-        """Load data frame and analyze results
-
-        """
+        """Load data frame and analyze results"""
         sns.set()
         # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
         # print(df[df["Salary"]][0:7])
@@ -205,193 +203,140 @@ class Analyzer:
         plt.tight_layout()
         plt.show()
 
-    def analyze_and_save_results(self, df, output_filename='salary_analysis.csv'):
+    def analyze_and_save_results(self, df, output_filename="salary_analysis.csv"):
         """Загружает DataFrame, анализирует результаты и сохраняет в CSV"""
         sns.set()
 
         # Создаем словарь для хранения результатов анализа
-        analysis_results = {
-            'Метрика': [],
-            'Значение': []
-        }
+        analysis_results = {"Метрика": [], "Значение": []}
+
+        if "ProfessionName" in df.columns:
+            # Подсчитываем количество вакансий по профессиям
+            profession_counts = df["ProfessionName"].value_counts()
+            print("\nРаспределение по профессиям:")
+            print(profession_counts.head(10))  # Топ-10 профессий
+
+            # Добавляем в результаты анализа
+            for profession, count in profession_counts.head(5).items():
+                analysis_results["Метрика"].append(f"Профессия: {profession}")
+                analysis_results["Значение"].append(count)
+
+        if "IndustryName" in df.columns:
+            # Подсчитываем количество вакансий по отраслям
+            industry_counts = df["IndustryName"].value_counts()
+            print("\nРаспределение по отраслям:")
+            print(industry_counts.head(10))  # Топ-10 отраслей
+
+            # Добавляем в результаты анализа
+            for industry, count in industry_counts.head(5).items():
+                analysis_results["Метрика"].append(f"Отрасль: {industry}")
+                analysis_results["Значение"].append(count)
+
+        if "IndustryGroupName" in df.columns:
+            # Подсчитываем количество вакансий по группам индустрий
+            industry_group_counts = df["IndustryGroupName"].value_counts()
+            print("\nРаспределение по группам индустрий:")
+            print(industry_group_counts.head(10))  # Топ-10 групп индустрий
+
+            # Добавляем в результаты анализа
+            for group, count in industry_group_counts.head(5).items():
+                analysis_results["Метрика"].append(f"Группа индустрий: {group}")
+                analysis_results["Значение"].append(count)
 
         # Добавляем базовую статистику
-        analysis_results['Метрика'].append('Количество вакансий')
-        analysis_results['Значение'].append(df["URL"].count())
+        analysis_results["Метрика"].append("Количество вакансий")
+        analysis_results["Значение"].append(df["URL"].count())
 
         # Максимальные значения
         max_from_idx = df["From"].idxmax()
         max_to_idx = df["To"].idxmax()
-        analysis_results['Метрика'].extend([
-            'Максимальная стоимость "От" (руб)',
-            'Название вакансии (макс. От)',
-            'Максимальная стоимость "До" (руб)',
-            'Название вакансии (макс. До)'
-        ])
-        analysis_results['Значение'].extend([
-            df.loc[max_from_idx, "From"],
-            df.loc[max_from_idx, "Employer"],
-            df.loc[max_to_idx, "To"],
-            df.loc[max_to_idx, "Employer"]
-        ])
+        analysis_results["Метрика"].extend(
+            [
+                'Максимальная стоимость "От" (руб)',
+                "Название вакансии (макс. От)",
+                'Максимальная стоимость "До" (руб)',
+                "Название вакансии (макс. До)",
+            ]
+        )
+        analysis_results["Значение"].extend(
+            [
+                df.loc[max_from_idx, "From"],
+                df.loc[max_from_idx, "Employer"],
+                df.loc[max_to_idx, "To"],
+                df.loc[max_to_idx, "Employer"],
+            ]
+        )
 
         # Минимальные значения
         min_from_idx = df[df["From"] > 0]["From"].idxmin()  # Игнорируем нулевые значения
         min_to_idx = df[df["To"] > 0]["To"].idxmin()  # Игнорируем нулевые значения
-        analysis_results['Метрика'].extend([
-            'Минимальная стоимость "От" (руб)',
-            'Название вакансии (мин. От)',
-            'Минимальная стоимость "До" (руб)',
-            'Название вакансии (мин. До)'
-        ])
-        analysis_results['Значение'].extend([
-            df.loc[min_from_idx, "From"],
-            df.loc[min_from_idx, "Employer"],
-            df.loc[min_to_idx, "To"],
-            df.loc[min_to_idx, "Employer"]
-        ])
+        analysis_results["Метрика"].extend(
+            [
+                'Минимальная стоимость "От" (руб)',
+                "Название вакансии (мин. От)",
+                'Минимальная стоимость "До" (руб)',
+                "Название вакансии (мин. До)",
+            ]
+        )
+        analysis_results["Значение"].extend(
+            [
+                df.loc[min_from_idx, "From"],
+                df.loc[min_from_idx, "Employer"],
+                df.loc[min_to_idx, "To"],
+                df.loc[min_to_idx, "Employer"],
+            ]
+        )
 
         # Статистика по зарплатам с русскими названиями
         stats_mapping = {
-            'count': 'количество',
-            'mean': 'среднее',
-            'std': 'стандартное отклонение',
-            'min': 'минимум',
-            'max': 'максимум'
+            "count": "количество",
+            "mean": "среднее",
+            "std": "стандартное отклонение",
+            "min": "минимум",
+            "max": "максимум",
         }
 
         # Вычисляем статистику только для ненулевых значений
         df_stat = df[df["Salary"]][["From", "To"]].describe().applymap(np.int32)
 
         for stat, stat_ru in stats_mapping.items():
-            analysis_results['Метрика'].extend([
-                f'Стоимость "От" ({stat_ru})',
-                f'Стоимость "До" ({stat_ru})'
-            ])
-            analysis_results['Значение'].extend([
-                df_stat.loc[stat, 'From'],
-                df_stat.loc[stat, 'To']
-            ])
+            analysis_results["Метрика"].extend([f'Стоимость "От" ({stat_ru})', f'Стоимость "До" ({stat_ru})'])
+            analysis_results["Значение"].extend([df_stat.loc[stat, "From"], df_stat.loc[stat, "To"]])
 
         # Усредненная статистика с русскими названиями
         salary_data = df[df["Salary"]][["From", "To"]]
         comb_ft = np.nanmean(salary_data.to_numpy(), axis=1)
 
-        analysis_results['Метрика'].extend([
-            'Минимальная стоимость (среднее)',
-            'Максимальная стоимость (среднее)',
-            'Средняя стоимость по всем вакансиям',
-            'Медианная стоимость по всем вакансиям'
-        ])
-        analysis_results['Значение'].extend([
-            int(np.min(comb_ft)),
-            int(np.max(comb_ft)),
-            int(np.mean(comb_ft)),
-            int(np.median(comb_ft))
-        ])
+        analysis_results["Метрика"].extend(
+            [
+                "Минимальная стоимость (среднее)",
+                "Максимальная стоимость (среднее)",
+                "Средняя стоимость по всем вакансиям",
+                "Медианная стоимость по всем вакансиям",
+            ]
+        )
+        analysis_results["Значение"].extend(
+            [int(np.min(comb_ft)), int(np.max(comb_ft)), int(np.mean(comb_ft)), int(np.median(comb_ft))]
+        )
 
         # Создаем DataFrame с результатами и сохраняем в CSV
         results_df = pd.DataFrame(analysis_results)
-        results_df.to_csv(output_filename, index=False, encoding='utf-8-sig')
+        results_df.to_csv(output_filename, index=False, encoding="utf-8-sig")
 
         print(f"\n[ИНФО]: Результаты анализа сохранены в файл {output_filename}")
 
         # Выводим результаты в консоль для проверки
         print("\nКраткий обзор результатов:")
-        for metric, value in zip(analysis_results['Метрика'], analysis_results['Значение']):
+        for metric, value in zip(analysis_results["Метрика"], analysis_results["Значение"]):
             print(f"{metric}: {value}")
 
         print("\n[ИНФО]: Анализ завершен!")
-
-    def analyze_and_save_results1(self, df, output_filename='salary_analysis.csv'):
-        """Load data frame, analyze results and save to CSV"""
-        sns.set()
-
-        # Создаем словарь для хранения результатов анализа
-        analysis_results = {
-            'Метрика': [],
-            'Значение': []
-        }
-
-        # Добавляем базовую статистику
-        analysis_results['Метрика'].append('Количество вакансий')
-        analysis_results['Значение'].append(df["URL"].count())
-
-        # Максимальные значения
-        max_from_idx = df["From"].idxmax()
-        max_to_idx = df["To"].idxmax()
-        analysis_results['Метрика'].extend([
-            'Максимальная зарплата "От" (руб)',
-            'Название вакансии (макс. От)',
-            'Максимальная зарплата "До" (руб)',
-            'Название вакансии (макс. До)'
-        ])
-        analysis_results['Значение'].extend([
-            df.loc[max_from_idx, "From"],
-            df.loc[max_from_idx, "Employer"],
-            df.loc[max_to_idx, "To"],
-            df.loc[max_to_idx, "Employer"]
-        ])
-
-        # Минимальные значения
-        min_from_idx = df["From"].idxmin()
-        min_to_idx = df["To"].idxmin()
-        analysis_results['Метрика'].extend([
-            'Минимальная зарплата "От" (руб)',
-            'Название вакансии (мин. От)',
-            'Минимальная зарплата "До" (руб)',
-            'Название вакансии (мин. До)'
-        ])
-        analysis_results['Значение'].extend([
-            df.loc[min_from_idx, "From"],
-            df.loc[min_from_idx, "Employer"],
-            df.loc[min_to_idx, "To"],
-            df.loc[min_to_idx, "Employer"]
-        ])
-
-        # Статистика по зарплатам
-        df_stat = df[["From", "To"]].describe().applymap(np.int32)
-        for stat in ['count', 'mean', 'std', 'min', 'max']:
-            analysis_results['Метрика'].extend([
-                f'From {stat}',
-                f'To {stat}'
-            ])
-            analysis_results['Значение'].extend([
-                df_stat.loc[stat, 'From'],
-                df_stat.loc[stat, 'To']
-            ])
-
-        # Усредненная статистика
-        comb_ft = np.nanmean(df[df["Salary"]][["From", "To"]].to_numpy(), axis=1)
-        analysis_results['Метрика'].extend([
-            'Средняя минимальная зарплата',
-            'Средняя максимальная зарплата',
-            'Общая средняя зарплата',
-            'Медианная зарплата'
-        ])
-        analysis_results['Значение'].extend([
-            int(np.min(comb_ft)),
-            int(np.max(comb_ft)),
-            int(np.mean(comb_ft)),
-            int(np.median(comb_ft))
-        ])
-
-        # Создаем DataFrame с результатами и сохраняем в CSV
-        results_df = pd.DataFrame(analysis_results)
-        results_df.to_csv(output_filename, index=False, encoding='utf-8-sig')
-
-        print(f"\n[ИНФО]: Результаты анализа сохранены в файл {output_filename}")
-
-        # Выводим результаты в консоль для проверки
-        print("\nКраткий обзор результатов:")
-        for metric, value in zip(analysis_results['Метрика'], analysis_results['Значение']):
-            print(f"{metric}: {value}")
 
 
 if __name__ == "__main__":
     analyzer = Analyzer()
     print("\n[INFO]: Analyze dataframe...")
-    df = pd.read_csv('/home/aleksandr/Work/hh_research/data/продавец/hh_results.csv')
+    df = pd.read_csv("/home/aleksandr/Work/hh_research/data/продавец/hh_results.csv")
     analyzer.analyze_df(df)
     analyzer.analyze_and_save_results(df)
     print("[INFO]: Done! Exit()")
